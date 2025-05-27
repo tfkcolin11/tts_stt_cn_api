@@ -1,0 +1,9 @@
+# requirements.txt
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+python-multipart>=0.0.5
+transformers>=4.30.0
+TTS>=0.22.0 
+# torch and torchaudio are installed separately in Dockerfile for CPU version
+# soundfile is a dependency of TTS or transformers, usually installed automatically.
+# If not, add `soundfile>=0.12.0`
