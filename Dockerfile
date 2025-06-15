@@ -1,17 +1,17 @@
+# Dockerfile
 FROM python:3.10-slim
 
 LABEL maintainer="AI Assistant"
 LABEL description="Chinese STT and TTS API using Whisper and Coqui TTS."
 
-# Set environment variables
+# Set environment variables for cleaner pip installs and Docker logging
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1 
-# Ensures that Python output (like print statements or logs) is sent straight to stdout 
-# without being buffered first, which is useful for Docker logging.
+ENV PIP_NO_CACHE_DIR=off
+ENV PIP_NO_CACHE_DIR=yes
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # Install system dependencies
-# git might be needed by TTS or transformers for fetching certain model components.
-# ffmpeg is essential for audio processing by Whisper and other libraries.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     ffmpeg \
@@ -23,33 +23,30 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Install PyTorch for CPU first.
-# Check https://pytorch.org/get-started/locally/ for the latest CPU-only pip install commands.
-# Using a known working version range for stability.
-RUN pip install --no-cache-dir torch==2.1.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cpu
+# Upgrade pip, setuptools, and wheel first
+RUN pip install --upgrade pip setuptools wheel
 
-# Copy requirements file and install other Python dependencies
+# Clear pip cache before installing critical libraries like PyTorch
+# This is a bit redundant if PIP_NO_CACHE_DIR=yes, but harmless.
+RUN pip cache purge || true # Allow to fail if cache doesn't exist
+
+# Install PyTorch, Torchaudio, and Torchvision for CPU.
+# Using specific CPU versions from PyTorch's official download server.
+# This command should be robust for getting the correct CPU versions.
+RUN pip install torch==2.1.2 torchaudio==2.1.2 torchvision==0.16.2 --index-url https://download.pytorch.org/whl/cpu
+
+# Copy requirements file
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Install other Python dependencies AFTER PyTorch, to ensure PyTorch version isn't overridden
+# by a sub-dependency from requirements.txt.
+RUN pip install -r requirements.txt
 
 # Copy the rest of the application code into the image
 COPY ./main.py .
-# If you have other local modules, copy them as well e.g. COPY ./app_utils ./app_utils
-
-# Set up a non-root user for security (optional but good practice)
-# RUN useradd -ms /bin/bash appuser
-# USER appuser
-# WORKDIR /app/app # If using a subdirectory for the app
 
 # Expose the port the app runs on
 EXPOSE 8000
 
-# Healthcheck (optional, but good for orchestration systems)
-# HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-#   CMD curl -f http://localhost:8000/ || exit 1
-
 # Command to run the application
-# Using --workers 1 as these ML models are resource-intensive. 
-# Multiple workers might lead to OOM errors if each loads the models separately on CPU.
-# For production, consider a more robust setup (e.g., Gunicorn managing Uvicorn workers).
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
